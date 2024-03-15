@@ -79,7 +79,8 @@ static struct device* radioberryCharDevice = NULL;
 static int _nrx = 1;
 
 static unsigned int irqNumber; 
-static unsigned int gpioRxSamplesiPin = 25; 
+static unsigned int gpioRxSamplesiPin = 25;
+static struct gpio_desc *gpio_desc;
 
 static irq_handler_t radioberry_irq_handler(unsigned int irq, void *dev_id, struct pt_regs *regs){
 	wake_up_interruptible(&rx_sample_queue);
@@ -277,7 +278,7 @@ static int __init radioberry_init(void) {
 	printk(KERN_INFO "Radioberry: registered correctly with major number %d\n", majorNumber);
 
    // Register the device class
-   radioberryCharClass = class_create(THIS_MODULE, CLASS_NAME);
+   radioberryCharClass = class_create(CLASS_NAME);
    if (IS_ERR(radioberryCharClass)){                
       unregister_chrdev(majorNumber, DEVICE_NAME);
       printk(KERN_ALERT "Failed to register device class\n");
@@ -298,15 +299,27 @@ static int __init radioberry_init(void) {
 	mutex_init(&radioberry_mutex);
 	init_waitqueue_head(&rx_sample_queue);
 	
-	//configure irq.
-	gpio_request(gpioRxSamplesiPin, "sysfs");       
-	gpio_direction_input(gpioRxSamplesiPin);        
-	gpio_export(gpioRxSamplesiPin, false); 	
-	
+    //configure irq.
+	gpio_desc = gpio_to_desc(gpioRxSamplesiPin);
+	if (!gpio_desc) {
+		printk("Failed to get GPIO descriptor\n");
+		return -ENODEV;
+	}
+	retval = gpiod_direction_input(gpio_desc);
+	if (retval) {
+		printk("Failed to set GPIO pin direction\n");
+		return retval;
+	}
+
 	printk(KERN_INFO "Radioberry: The rx sample state is currently: %d\n", gpio_get_value(gpioRxSamplesiPin));
 
 	// GPIO numbers and IRQ numbers are not the same! This function performs the mapping for us
-	irqNumber = gpio_to_irq(gpioRxSamplesiPin);
+	// Get the IRQ number for the GPIO pin
+	irqNumber = gpiod_to_irq(gpio_desc);
+	if (irqNumber < 0) {
+		printk("Failed to get IRQ number for GPIO pin\n");
+		return irqNumber;
+	}
 	printk(KERN_INFO "Radioberry: The rx samples pin is mapped to IRQ: %d\n", irqNumber);
 
 	// This next call requests an interrupt line
@@ -335,7 +348,7 @@ static void __exit radioberry_exit(void) {
 	printk(KERN_INFO "inside %s function \n", __FUNCTION__);
 	
 	free_irq(irqNumber, NULL);
-    gpio_unexport(gpioRxSamplesiPin); 
+	gpiod_put(gpio_desc);
 	
 	platform_driver_unregister(&radioberry_driver);
 	
