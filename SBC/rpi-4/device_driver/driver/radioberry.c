@@ -54,6 +54,7 @@ sudo cp radioberry.ko /lib/modules/$(uname -r)/kernel/drivers/sdr
 #include <linux/platform_device.h>
 #include <linux/property.h>
 #include <linux/interrupt.h>            
+#include <linux/version.h>
 
 static struct mutex spi_mutex;
 
@@ -81,9 +82,9 @@ static int _nrx = 1;
 static unsigned int irqNumber = -1; 
 static struct gpio_desc *gpio_desc = NULL;
 
-static irq_handler_t radioberry_irq_handler(unsigned int irq, void *dev_id, struct pt_regs *regs){
+static irqreturn_t radioberry_irq_handler(int irq, void *dev_id){
 	wake_up_interruptible(&rx_sample_queue);
-    return (irq_handler_t) IRQ_HANDLED;      
+    return IRQ_HANDLED;      
 }
 
 static void firmware_load(const char *firmware, int size) {
@@ -251,7 +252,11 @@ static int radioberry_probe(struct platform_device *pdev)
 	printk(KERN_INFO "Radioberry: registered correctly with major number %d\n", majorNumber);
 
 	// Register the device class
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 4, 0)
+	radioberryCharClass = class_create(THIS_MODULE, CLASS_NAME);
+#else
 	radioberryCharClass = class_create(CLASS_NAME);
+#endif	
 	if (IS_ERR(radioberryCharClass)){                
 	  unregister_chrdev(majorNumber, DEVICE_NAME);
 	  printk(KERN_ALERT "Failed to register device class\n");
@@ -294,11 +299,11 @@ static int radioberry_probe(struct platform_device *pdev)
 	// GPIO numbers and IRQ numbers are not the same! This function performs the mapping for us
 	// Get the IRQ number for the GPIO pin
 	// This next call requests an interrupt line
-	result = request_irq(irqNumber,             
-						(irq_handler_t) radioberry_irq_handler, 
-						IRQF_TRIGGER_RISING,   // Interrupt on rising edge  RQF_TRIGGER_RISING
-						"radioberry_rx_irq",    // Used in /proc/interrupts to identify the owner
-					NULL);
+	result = request_irq(irqNumber,
+						 radioberry_irq_handler, 
+						 IRQF_TRIGGER_RISING,   // Interrupt on rising edge  RQF_TRIGGER_RISING
+						 "radioberry_rx_irq",    // Used in /proc/interrupts to identify the owner
+						 NULL);
 
 	printk(KERN_INFO "Radioberry: The interrupt request result is: %d\n", result);	
 	mutex_init(&spi_mutex);
