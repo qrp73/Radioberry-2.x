@@ -89,6 +89,7 @@ if [ ! -d "/lib/modules/$(uname -r)/kernel/drivers/sdr" ]; then
 fi
 	
 cd Radioberry-2.x/SBC/rpi-4/device_driver/driver
+make clean
 make
 if [ $? -eq 0 ]; then
 	sudo cp radioberry.ko /lib/modules/$(uname -r)/kernel/drivers/sdr
@@ -127,7 +128,8 @@ fi
 echo "Installing Radioberry firmware..."
 	
 cd Radioberry-2.x/SBC/rpi-4/device_driver/firmware
-sudo make
+make clean
+make
 	if [ $? -eq 0 ]; then
 
 	sudo cp radioberry  /usr/local/bin
